@@ -33,7 +33,7 @@ jobs:
           xcode-select -p
           xcodebuild -version
           test -f KeePassium/remote-files/webdav/WebDAVProvider.swift
-          rg -q 'FEATHER_COMPAT' KeePassiumLib/KeePassiumLib/util/AppGroup.swift
+          grep -q 'FEATHER_COMPAT' KeePassiumLib/KeePassiumLib/util/AppGroup.swift
 
       - name: Inspect Xcode projects
         run: |

@@ -28,7 +28,7 @@ jobs:
           git remote add upstream https://github.com/keepassium/KeePassium.git
           git fetch upstream master --tags
 
-          if git diff --quiet HEAD upstream/master; then
+          if git merge-base --is-ancestor upstream/master HEAD; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Fork master is already up to date."
             exit 0
