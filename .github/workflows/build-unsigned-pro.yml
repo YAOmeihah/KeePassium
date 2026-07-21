@@ -34,9 +34,12 @@ jobs:
       - name: Inspect Xcode projects
         run: |
           set -o pipefail
+          rm -f KeePassiumLib/KeePassiumLib.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
           xcodebuild -project KeePassiumLib/KeePassiumLib.xcodeproj -list \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             | tee "$RUNNER_TEMP/keepassiumlib-project.txt"
           xcodebuild -project KeePassium.xcodeproj -list \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             | tee "$RUNNER_TEMP/keepassium-project.txt"
 
       - name: Build KeePassiumLib without signing
