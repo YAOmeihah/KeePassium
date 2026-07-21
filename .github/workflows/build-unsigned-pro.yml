@@ -1,0 +1,120 @@
+name: Build unsigned KeePassium Pro
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/unsigned-pro-2.6.173
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Show build environment
+        run: |
+          set -euo pipefail
+          sw_vers
+          uname -m
+          xcode-select -p
+          xcodebuild -version
+          ls -1d /Applications/Xcode*.app || true
+          git merge-base --is-ancestor e651df4f89b0b8550371566ca9aa55a964d2904e HEAD
+          git diff --quiet e651df4f89b0b8550371566ca9aa55a964d2904e HEAD -- . \
+            ':(exclude).github/workflows/build-unsigned-pro.yml'
+          test -f KeePassium/remote-files/webdav/WebDAVProvider.swift
+
+      - name: Inspect Xcode projects
+        run: |
+          set -o pipefail
+          xcodebuild -project KeePassiumLib/KeePassiumLib.xcodeproj -list \
+            | tee "$RUNNER_TEMP/keepassiumlib-project.txt"
+          xcodebuild -project KeePassium.xcodeproj -list \
+            | tee "$RUNNER_TEMP/keepassium-project.txt"
+
+      - name: Build KeePassiumLib without signing
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project KeePassiumLib/KeePassiumLib.xcodeproj \
+            -target KeePassiumLib \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            SYMROOT="$RUNNER_TEMP/Build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build | tee "$RUNNER_TEMP/keepassiumlib-build.log"
+
+      - name: Build KeePassium Pro without signing
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project KeePassium.xcodeproj \
+            -target "KeePassium Pro" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            SYMROOT="$RUNNER_TEMP/Build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build | tee "$RUNNER_TEMP/keepassium-pro-build.log"
+
+      - name: Package unsigned IPAs
+        run: |
+          set -euo pipefail
+
+          app_path=$(find "$RUNNER_TEMP/Build" -type d -name 'KeePassium Pro.app' -print -quit)
+          test -n "$app_path"
+          test -f "$app_path/KeePassium Pro"
+          test -d "$app_path/Frameworks/KeePassiumLib.framework"
+
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Info.plist")
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_path/Info.plist")
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Info.plist")
+
+          test "$bundle_id" = "com.keepassium.ios.pro"
+          printf 'Source tag: 2.6.173\nSource commit: %s\nApp version: %s (%s)\nBundle ID: %s\n' \
+            "$(git rev-parse HEAD)" "$version" "$build" "$bundle_id" \
+            | tee "$RUNNER_TEMP/build-info.txt"
+
+          full_root="$RUNNER_TEMP/ipa-full"
+          mkdir -p "$full_root/Payload"
+          ditto "$app_path" "$full_root/Payload/KeePassium Pro.app"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$full_root/Payload" \
+            "$RUNNER_TEMP/KeePassiumPro-2.6.173-unsigned-full.ipa"
+
+          feather_root="$RUNNER_TEMP/ipa-feather"
+          mkdir -p "$feather_root/Payload"
+          ditto "$app_path" "$feather_root/Payload/KeePassium Pro.app"
+          rm -rf "$feather_root/Payload/KeePassium Pro.app/PlugIns"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$feather_root/Payload" \
+            "$RUNNER_TEMP/KeePassiumPro-2.6.173-unsigned-feather-no-autofill.ipa"
+
+          find "$app_path" -maxdepth 4 -print | sort > "$RUNNER_TEMP/full-app-files.txt"
+          shasum -a 256 "$RUNNER_TEMP"/*.ipa | tee "$RUNNER_TEMP/SHA256SUMS.txt"
+
+      - name: Upload unsigned IPAs
+        uses: actions/upload-artifact@v4
+        with:
+          name: KeePassiumPro-2.6.173-unsigned
+          path: |
+            ${{ runner.temp }}/KeePassiumPro-2.6.173-unsigned-full.ipa
+            ${{ runner.temp }}/KeePassiumPro-2.6.173-unsigned-feather-no-autofill.ipa
+            ${{ runner.temp }}/SHA256SUMS.txt
+            ${{ runner.temp }}/build-info.txt
+            ${{ runner.temp }}/full-app-files.txt
+            ${{ runner.temp }}/*-project.txt
+            ${{ runner.temp }}/*-build.log
+          if-no-files-found: error
+          retention-days: 14
