@@ -1,10 +1,17 @@
-name: Build unsigned KeePassium Pro
+name: Build latest Feather-compatible KeePassium Pro
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - codex/unsigned-pro-2.6.173
+      - master
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -25,15 +32,8 @@ jobs:
           uname -m
           xcode-select -p
           xcodebuild -version
-          ls -1d /Applications/Xcode*.app || true
-          git merge-base --is-ancestor e651df4f89b0b8550371566ca9aa55a964d2904e HEAD
-          for changed in $(git diff --name-only e651df4f89b0b8550371566ca9aa55a964d2904e HEAD); do
-            case "$changed" in
-              .github/workflows/build-unsigned-pro.yml|KeePassiumLib/KeePassiumLib/files/FileKeeper.swift|KeePassiumLib/KeePassiumLib/util/AppGroup.swift|KeePassiumLib/KeePassiumLib/util/UserDefaults+appGroupShared.swift|KeePassiumLib/KeePassiumLib/util/password-generator/PassphraseWordlistManager.swift) ;;
-              *) echo "Unexpected source change: $changed"; exit 1 ;;
-            esac
-          done
           test -f KeePassium/remote-files/webdav/WebDAVProvider.swift
+          rg -q 'FEATHER_COMPAT' KeePassiumLib/KeePassiumLib/util/AppGroup.swift
 
       - name: Inspect Xcode projects
         run: |
@@ -46,7 +46,7 @@ jobs:
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             | tee "$RUNNER_TEMP/keepassium-project.txt"
 
-      - name: Build KeePassiumLib without signing
+      - name: Build KeePassiumLib with Feather compatibility
         run: |
           set -o pipefail
           xcodebuild \
@@ -79,7 +79,7 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             build | tee "$RUNNER_TEMP/keepassium-pro-build.log"
 
-      - name: Package unsigned IPAs
+      - name: Package Feather-compatible IPA
         run: |
           set -euo pipefail
 
@@ -91,33 +91,35 @@ jobs:
           version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Info.plist")
           build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_path/Info.plist")
           bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Info.plist")
-
           test "$bundle_id" = "com.keepassium.ios.pro"
-          printf 'Source tag: 2.6.173\nSource commit: %s\nApp version: %s (%s)\nBundle ID: %s\nBuild mode: FEATHER_COMPAT (no AutoFill extension)\n' \
+
+          printf 'Source commit: %s\nApp version: %s (%s)\nBundle ID: %s\nBuild mode: FEATHER_COMPAT (no AutoFill extension)\n' \
             "$(git rev-parse HEAD)" "$version" "$build" "$bundle_id" \
             | tee "$RUNNER_TEMP/build-info.txt"
 
-          feather_root="$RUNNER_TEMP/ipa-feather-compat"
-          mkdir -p "$feather_root/Payload"
-          ditto "$app_path" "$feather_root/Payload/KeePassium Pro.app"
-          rm -rf "$feather_root/Payload/KeePassium Pro.app/PlugIns"
+          ipa_root="$RUNNER_TEMP/ipa-feather-compat"
+          mkdir -p "$ipa_root/Payload"
+          ditto "$app_path" "$ipa_root/Payload/KeePassium Pro.app"
+          rm -rf "$ipa_root/Payload/KeePassium Pro.app/PlugIns"
+          test ! -d "$ipa_root/Payload/KeePassium Pro.app/PlugIns"
+
+          ipa_path="$RUNNER_TEMP/KeePassiumPro-${version}-${build}-feather-compat-no-autofill.ipa"
           ditto -c -k --sequesterRsrc --keepParent \
-            "$feather_root/Payload" \
-            "$RUNNER_TEMP/KeePassiumPro-2.6.173-feather-compat-no-autofill.ipa"
+            "$ipa_root/Payload" "$ipa_path"
 
           find "$app_path" -maxdepth 4 -print | sort > "$RUNNER_TEMP/full-app-files.txt"
-          shasum -a 256 "$RUNNER_TEMP"/*.ipa | tee "$RUNNER_TEMP/SHA256SUMS.txt"
+          shasum -a 256 "$ipa_path" | tee "$RUNNER_TEMP/SHA256SUMS.txt"
 
-      - name: Upload unsigned IPAs
+      - name: Upload Feather-compatible IPA
         uses: actions/upload-artifact@v4
         with:
-          name: KeePassiumPro-2.6.173-feather-compat
+          name: KeePassiumPro-feather-compat-${{ github.run_number }}
           path: |
-            ${{ runner.temp }}/KeePassiumPro-2.6.173-feather-compat-no-autofill.ipa
+            ${{ runner.temp }}/KeePassiumPro-*-feather-compat-no-autofill.ipa
             ${{ runner.temp }}/SHA256SUMS.txt
             ${{ runner.temp }}/build-info.txt
             ${{ runner.temp }}/full-app-files.txt
             ${{ runner.temp }}/*-project.txt
             ${{ runner.temp }}/*-build.log
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30

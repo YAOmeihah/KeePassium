@@ -1,0 +1,46 @@
+name: Sync KeePassium upstream
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fork master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Merge upstream master
+        id: sync
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/keepassium/KeePassium.git
+          git fetch upstream master --tags
+
+          if git diff --quiet HEAD upstream/master; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Fork master is already up to date."
+            exit 0
+          fi
+
+          git merge --no-edit upstream/master
+          git push origin HEAD:master
+          git push origin --tags
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger Feather-compatible build
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build-unsigned-pro.yml --repo "$GITHUB_REPOSITORY" --ref master
