@@ -44,4 +44,29 @@ public class AppGroup {
     }
 
     public static weak var applicationShared: UIApplication?
+
+    public static var sharedContainerURL: URL? {
+        FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: id
+        )
+    }
+
+    public static var storageContainerURL: URL {
+        if let sharedContainerURL {
+            return sharedContainerURL
+        }
+
+#if FEATHER_COMPAT
+        let applicationSupportURL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+        return applicationSupportURL.appendingPathComponent(
+            "KeePassium",
+            isDirectory: true
+        )
+#else
+        fatalError("Failed to access the application group container.")
+#endif
+    }
 }

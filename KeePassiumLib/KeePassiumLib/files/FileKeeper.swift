@@ -82,8 +82,7 @@ public class FileKeeper {
 
         print("\nDoc dir: \(docDirURL)\n")
 
-        guard let sharedContainerURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: AppGroup.id) else { fatalError() }
+        let sharedContainerURL = AppGroup.storageContainerURL
 
         let _backupDirURL = sharedContainerURL.appendingPathComponent(
             FileKeeper.backupDirectoryName,

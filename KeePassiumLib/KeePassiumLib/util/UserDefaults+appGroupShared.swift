@@ -10,10 +10,16 @@ import Foundation
 
 public extension UserDefaults {
     static var appGroupShared: UserDefaults {
-        guard let instance = UserDefaults(suiteName: AppGroup.id) else {
-            fatalError("Failed to create app group user defaults.")
+        if AppGroup.sharedContainerURL != nil,
+           let instance = UserDefaults(suiteName: AppGroup.id) {
+            return instance
         }
-        return instance
+
+#if FEATHER_COMPAT
+        return .standard
+#else
+        fatalError("Failed to create app group user defaults.")
+#endif
     }
 
     static func eraseAppGroupShared() {

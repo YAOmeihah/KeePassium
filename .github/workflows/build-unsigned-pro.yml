@@ -27,8 +27,12 @@ jobs:
           xcodebuild -version
           ls -1d /Applications/Xcode*.app || true
           git merge-base --is-ancestor e651df4f89b0b8550371566ca9aa55a964d2904e HEAD
-          git diff --quiet e651df4f89b0b8550371566ca9aa55a964d2904e HEAD -- . \
-            ':(exclude).github/workflows/build-unsigned-pro.yml'
+          for changed in $(git diff --name-only e651df4f89b0b8550371566ca9aa55a964d2904e HEAD); do
+            case "$changed" in
+              .github/workflows/build-unsigned-pro.yml|KeePassiumLib/KeePassiumLib/files/FileKeeper.swift|KeePassiumLib/KeePassiumLib/util/AppGroup.swift|KeePassiumLib/KeePassiumLib/util/UserDefaults+appGroupShared.swift|KeePassiumLib/KeePassiumLib/util/password-generator/PassphraseWordlistManager.swift) ;;
+              *) echo "Unexpected source change: $changed"; exit 1 ;;
+            esac
+          done
           test -f KeePassium/remote-files/webdav/WebDAVProvider.swift
 
       - name: Inspect Xcode projects
@@ -53,6 +57,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
             SYMROOT="$RUNNER_TEMP/Build" \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="FEATHER_COMPAT" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
@@ -88,24 +93,17 @@ jobs:
           bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app_path/Info.plist")
 
           test "$bundle_id" = "com.keepassium.ios.pro"
-          printf 'Source tag: 2.6.173\nSource commit: %s\nApp version: %s (%s)\nBundle ID: %s\n' \
+          printf 'Source tag: 2.6.173\nSource commit: %s\nApp version: %s (%s)\nBundle ID: %s\nBuild mode: FEATHER_COMPAT (no AutoFill extension)\n' \
             "$(git rev-parse HEAD)" "$version" "$build" "$bundle_id" \
             | tee "$RUNNER_TEMP/build-info.txt"
 
-          full_root="$RUNNER_TEMP/ipa-full"
-          mkdir -p "$full_root/Payload"
-          ditto "$app_path" "$full_root/Payload/KeePassium Pro.app"
-          ditto -c -k --sequesterRsrc --keepParent \
-            "$full_root/Payload" \
-            "$RUNNER_TEMP/KeePassiumPro-2.6.173-unsigned-full.ipa"
-
-          feather_root="$RUNNER_TEMP/ipa-feather"
+          feather_root="$RUNNER_TEMP/ipa-feather-compat"
           mkdir -p "$feather_root/Payload"
           ditto "$app_path" "$feather_root/Payload/KeePassium Pro.app"
           rm -rf "$feather_root/Payload/KeePassium Pro.app/PlugIns"
           ditto -c -k --sequesterRsrc --keepParent \
             "$feather_root/Payload" \
-            "$RUNNER_TEMP/KeePassiumPro-2.6.173-unsigned-feather-no-autofill.ipa"
+            "$RUNNER_TEMP/KeePassiumPro-2.6.173-feather-compat-no-autofill.ipa"
 
           find "$app_path" -maxdepth 4 -print | sort > "$RUNNER_TEMP/full-app-files.txt"
           shasum -a 256 "$RUNNER_TEMP"/*.ipa | tee "$RUNNER_TEMP/SHA256SUMS.txt"
@@ -113,10 +111,9 @@ jobs:
       - name: Upload unsigned IPAs
         uses: actions/upload-artifact@v4
         with:
-          name: KeePassiumPro-2.6.173-unsigned
+          name: KeePassiumPro-2.6.173-feather-compat
           path: |
-            ${{ runner.temp }}/KeePassiumPro-2.6.173-unsigned-full.ipa
-            ${{ runner.temp }}/KeePassiumPro-2.6.173-unsigned-feather-no-autofill.ipa
+            ${{ runner.temp }}/KeePassiumPro-2.6.173-feather-compat-no-autofill.ipa
             ${{ runner.temp }}/SHA256SUMS.txt
             ${{ runner.temp }}/build-info.txt
             ${{ runner.temp }}/full-app-files.txt

@@ -10,9 +10,7 @@ import Foundation
 
 public final class PassphraseWordlistManager {
     private static var wordlistsFolder: URL {
-        guard let sharedContainerURL = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: AppGroup.id) else { fatalError() }
-        return sharedContainerURL.appendingPathComponent("wordlists")
+        return AppGroup.storageContainerURL.appendingPathComponent("wordlists")
     }
 
     public static let customWordlistExtension = "txt"
